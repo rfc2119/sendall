@@ -21,7 +21,8 @@ There are two python client implementation [here](https://github.com/nneonneo/ff
 ### wetransfer
 
 ## TODO
-* use the following as a backend
-    [] firefox send
-    [] transfer.sh
-    [] WeTransfer
+
+* use the following as a backend:
+    [ ] firefox send
+    [ ] transfer.sh
+    [ ] WeTransfer

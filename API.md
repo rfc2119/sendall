@@ -3,7 +3,7 @@
 common commands for all backends
 
 positinal arguments:
-* `backend <backend>`: pick one of the supported backends
+* `<backend>`: pick one of the supported backends
 
 flags:
 * `--host <url>`: specify a different host than the original (for example, a self-hosted service)
