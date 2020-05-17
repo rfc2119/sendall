@@ -16,7 +16,7 @@ var (
 	// userLicense string
 
 	rootCmd     = &cobra.Command{
-		Version: VERSION,
+		// Version: VERSION,
 		Use:     "sendall <host> [flags] [<cmd1> [cmd1_flags], ...]",
 		Short:   "sendall wraps several file sharing backends into one app",
 		Long: `sendall  eases the usage of anonymous file sharing websites

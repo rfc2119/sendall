@@ -35,7 +35,7 @@ func TestPutMaxDownloads1(t *testing.T) {
 		method: "PUT",
 		// path:   "/",
 		files: []string{"/etc/passwd", "/usr/share/backgrounds/xfce/xfce-blue.jpg"},
-		customHeaders: map[string]string{
+		reqHeaders: map[string]string{
 			"Max-Downloads": "1",
 		},
 	}
@@ -44,9 +44,9 @@ func TestPutMaxDownloads1(t *testing.T) {
 func TestPutMaxDownloads2(t *testing.T) {
 	req := generalRequest{
 		method: "PUT",
-		path:   "/put/", // TODO: ineffictive, as path is rewitten in dogeneralRequest
+		host:   "/put/", // TODO: ineffictive, as path is rewitten in dogeneralRequest
 		files:  []string{"/etc/passwd"},
-		customHeaders: map[string]string{
+		reqHeaders: map[string]string{
 			"Max-Downloads": "1",
 		},
 	}
