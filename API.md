@@ -1,32 +1,23 @@
-# common
+# root command
 
-common commands for all backends
-
-positinal arguments:
-* `<backend>`: pick one of the supported backends
+invokes the main command
 
 flags:
-* `--host <url>`: specify a different host than the original (for example, a self-hosted service)
-
-## send
-
-positinal arguments:
-* `file`: a list of local path(s) to file(s) to upload
 * 
+
+## service
+
+choose one of the supported services and type it as a command
+
+positional arguments:
+* `file`: a list of local path(s) to file(s) to upload
 
 flags:
 * `--encrypt [key]`: forget this flag for now
 * `--max-downloads <int>`: self-explanatory
-* `--max-days <int>`: number in days
+* `--max-days <int>`: number in days after which the file will be deleted on the server
+* `--host <url>`: specify a different host than the original (for example, a self-hosted service)
 
-## get
-
+### delete
 positional arguments:
-* `url`: downloads url
-
-flags:
-* `--dir <dir>`: directory to download file
-
-## delete
-positional arguments:
-* `delete_link`: deletes the link
+* `<delete_url>`: the delete url is ideally given by the service at the time of uploading

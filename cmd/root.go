@@ -1,27 +1,40 @@
 package cmd
 
 import (
-    "fmt"
-    "os"
+	"fmt"
+	"os"
 
 	// homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
-
 )
 
+// type generalRequest struct {
+// 	method      string
+// 	host        string
+// 	files       []string
+// 	reqHeaders  map[string]string // for each c in transferReqHeaders: reqHeaders[c] = <val>
+// }
+//
+// type generalResponse struct{
+// 	respHeaders map[string]string // for each c in transferRespHeaders: reqHeaders[c] = <val>
+// }
+
+// all services should at least implement this
+type service interface {
+	Post(files []string)
+	Delete(files []string)
+}
 
 var (
 	// Used for flags.
 	// cfgFile     string
 	// userLicense string
 
-	rootCmd     = &cobra.Command{
+	rootCmd = &cobra.Command{
 		// Version: VERSION,
-		Use:     "sendall <host> [flags] [<cmd1> [cmd1_flags], ...]",
-		Short:   "sendall wraps several file sharing backends into one app",
-		Long: `sendall  eases the usage of anonymous file sharing websites
-                by wraping them under one interface.
-                you can checkout a quick demo at <demo_website_hopefully>`,
+		// Use:     "sendall <host> [flags] [<cmd1> [cmd1_flags], ...]",
+		Short: "sendall wraps several file sharing backends into one app",
+		Long:  `sendall  eases the usage of anonymous file sharing websites by wraping them under one interface. you can checkout a quick demo at <demo_website_hopefully>`,
 
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Println("root")
@@ -30,17 +43,15 @@ var (
 	}
 )
 
-
 func init() {
 	// cobra.OnInitialize(initConfig)
 
 	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.cobra.yaml)")
-	rootCmd.PersistentFlags().StringP("author", "a", "YOUR NAME", "author name for copyright attribution")
+	// rootCmd.PersistentFlags().StringP("author", "a", "YOUR NAME", "author name for copyright attribution")
 	// rootCmd.PersistentFlags().StringVarP(&userLicense, "license", "l", "", "name of license for the project")
 
 	// main commands are defined here (are they added by default ? verify)
 }
-
 
 func initConfig() {
 	// if cfgFile != "" {
@@ -51,7 +62,7 @@ func initConfig() {
 	// 	if err != nil {
 	// 		er(err)
 	// 	}
-        // fmt.Println("found home %s", home)
+	// fmt.Println("found home %s", home)
 	// 	// Search config in home directory with name ".cobra" (without extension).
 	// }
 

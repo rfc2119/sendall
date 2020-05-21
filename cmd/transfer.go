@@ -1,15 +1,13 @@
 package cmd
 
 import (
-	"fmt"
-	"strconv"
-	// "strings"
-	// "bytes"
 	"bufio"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 
 	"github.com/boltdb/bolt"
@@ -23,49 +21,123 @@ const (
 )
 
 type generalRequest struct {
-	method      string
-	host        string
-	files       []string
-	reqHeaders  map[string]string // TODO: string->string
-	respHeaders map[string]string
+	method     string
+	host       string
+	files      []string
+	reqHeaders map[string]string // for each c in transferReqHeaders: reqHeaders[c] = <val>
+}
+
+type generalResponse struct {
+	respHeaders map[string]string // for each c in transferRespHeaders: reqHeaders[c] = <val>
+}
+
+type transferSh struct {
+	// dummy type to implement the interface
+}
+
+func (*transferSh) Post(files []string) {
+
+	// files are provided straight from the cmd interface
+	fileList := make([]string, len(files)) // TODO: be careful if you changed command syntax
+	for idx, file := range files {
+		if absPath, err := filepath.Abs(file); err != nil { // calls filepath.Clean() on exit
+			fmt.Println(err)
+		} else {
+			fileList[idx] = absPath
+		}
+	}
+	req := generalRequest{
+		method: "PUT", // default method is to upload
+		host:   hostUrl,
+		files:  fileList,
+		reqHeaders: map[string]string{
+			"Max-Downloads": strconv.Itoa(maxDownloads), // TODO: Itoa() all the fields ?
+			"Max-Days":      strconv.Itoa(maxDays),
+		},
+	}
+	sendRequestSaveResponse(&httpClient, &req)
+}
+func (*transferSh) Delete(files []string) {
+
+	var (
+		db        *bolt.DB
+		err       error
+		deleteUrl []byte
+		req       *http.Request
+		resp      *http.Response
+		bucket    *bolt.Bucket
+	)
+
+	if db, err = bolt.Open(dbName, 0600, nil); err != nil {
+		fmt.Println("could not open db: %s", err)
+		return
+	}
+	defer db.Close()
+	for _, file := range files { // files provided should be the exact received url
+		db.View(func(tx *bolt.Tx) error {
+			bucket := tx.Bucket([]byte(dbBucketName))
+			answer := bucket.Get([]byte(file))
+			deleteUrl = make([]byte, len(answer))
+			copy(deleteUrl, answer)
+
+			return nil
+		})
+		if len(deleteUrl) == 0 {
+			fmt.Println("link %s does not have an entry in db", file)
+			continue
+		}
+		req, _ = http.NewRequest("DELETE", string(deleteUrl), nil)
+		if resp, err = httpClient.Do(req); err != nil { // TODO: find out if Client.Do() does it in a goroutine
+			fmt.Printf("issuing request failed: %s", err)
+			continue
+		}
+		defer resp.Body.Close()
+		body, _ := ioutil.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		// TODO: assume here we got a 200 response code
+		err = db.Update(func(tx *bolt.Tx) error {
+
+			bucket = tx.Bucket([]byte(dbBucketName))
+			err = bucket.Delete([]byte(file)) // we're sure that the key does exist, right ?
+
+			return err
+
+		})
+		if err != nil {
+			fmt.Printf("error deleting %s from db", err)
+		}
+	}
+	fmt.Println("done")
 }
 
 var (
-	httpClient            = http.Client{}
-	hostUrl, deleteUrl    string
-	maxDownloads, maxDays int
-	dbName                = "sendall.db"
-	dbBucketName          = "deleteUrls" // bucket used with bolt
-	transferReqHeaders    = []string{    // any custom headers used in issuing the request; for reference
+	// ====== default values for options
+	hostUrl      = serverProd
+	maxDownloads = -1
+	maxDays      = 7
+	// ======
+	transferReqHeaders = []string{ // any custom headers used in issuing the request; for reference only
 		"Max-Downloads",
 		"Max-Days",
 	}
-	transferRespHeaders = []string{ // any custom headers received on response
+	transferRespHeaders = []string{ // any custom headers received on response; for reference only
 		"X-Url-Delete",
 	}
-	transferCmd = &cobra.Command{
+	// transferDefaults = map[string]interface{}{ // defaults for the cmd interface; for refernce
+	// 	"downlaods": -1,
+	// 	"days":      7,
+	// 	"host":      serverProd,
+	// }
+	httpClient   = http.Client{}
+	dbName       = "sendall.db" // bolt db name
+	dbBucketName = "deleteUrls" // bucket used with bolt
+	transfer     transferSh     // service transfer.sh
+	transferCmd  = &cobra.Command{
 		Use:   "transfer",
 		Short: "use transfer.sh service (credits go to DutchCoders)",
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			fileList := make([]string, len(args)) // TODO: be careful if you changed command syntax
-			for idx, file := range args {
-				if absPath, err := filepath.Abs(file); err != nil { // calls filepath.Clean() on exit
-					fmt.Println(err)
-				} else {
-					fileList[idx] = absPath
-				}
-			}
-			req := generalRequest{
-				method: "PUT", // default method is to upload
-				host:   hostUrl,
-				files:  fileList,
-				reqHeaders: map[string]string{
-					"Max-Downloads": strconv.Itoa(maxDownloads), // TODO: Itoa() all the fields ?
-					"Max-Days":      strconv.Itoa(maxDays),
-				},
-			}
-			sendRequestSaveResponse(&httpClient, &req)
+			transfer.Post(args)
 		},
 	}
 
@@ -74,78 +146,29 @@ var (
 		Short: "delete a link posted before",
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-
-			var (
-				db        *bolt.DB
-				err       error
-				deleteUrl []byte
-				req       *http.Request
-				resp      *http.Response
-				bucket    *bolt.Bucket
-			)
-
-			if db, err = bolt.Open(dbName, 0600, nil); err != nil {
-				fmt.Errorf("could not open db: %s", err)
-				return
-			}
-			defer db.Close()
-			for _, file := range args {
-				db.View(func(tx *bolt.Tx) error {
-					bucket = tx.Bucket([]byte(dbBucketName))
-					answer := bucket.Get([]byte(file))
-					deleteUrl = make([]byte, len(answer))
-					copy(deleteUrl, answer)
-
-					return nil
-				})
-				if len(deleteUrl) == 0 {
-					fmt.Println("link %s does not have an entry in db", file)
-					continue
-				}
-				req, _ = http.NewRequest("DELETE", string(deleteUrl), nil)
-				if resp, err = httpClient.Do(req); err != nil { // TODO: find out if Client.Do() does it in a goroutine
-					fmt.Printf("issuing request failed: %s", err)
-					continue
-				}
-				defer resp.Body.Close()
-				body, _ := ioutil.ReadAll(resp.Body)
-				fmt.Println(string(body))
-				// assume here we got a 200 response code
-				err = db.Update(func(tx *bolt.Tx) error {
-
-					bucket = tx.Bucket([]byte(dbBucketName))
-					err = bucket.Delete([]byte(file)) // we're sure that the key does exist, right ?
-
-					return err
-
-				})
-				if err != nil {
-					fmt.Println("error deleting %s from db", err)
-				}
-			}
-			fmt.Println("done")
-
+			transfer.Delete(args)
 		},
 	}
 )
 
 func init() {
-	transferCmd.Flags().IntVarP(&maxDownloads, "downloads", "e", -1, "Maximum number of downloads after which the link will expire")
-	transferCmd.Flags().IntVarP(&maxDays, "days", "d", 1, "Maximum number of days after which the file will be removed from the server")
-	transferCmd.Flags().StringVarP(&hostUrl, "host", "u", serverProd, "service URL, for example if you host your own instance")
+	transferCmd.Flags().IntVarP(&maxDownloads, "downloads", "e", maxDownloads, "Maximum number of downloads after which the link will expire")
+	transferCmd.Flags().IntVarP(&maxDays, "days", "d", maxDays, "Maximum number of days after which the file will be removed from the server")
+	transferCmd.Flags().StringVarP(&hostUrl, "host", "u", hostUrl, "service URL, for example if you host your own instance")
 	transferCmd.AddCommand(deleteCmd)
 	rootCmd.AddCommand(transferCmd)
 }
 
-func saveResponse(c <-chan *http.Response) {
+func saveResponse(c <-chan *http.Response, printOnly bool) error {
 	var (
-		body []byte
-		db   *bolt.DB
-		// bucket *bolt.Bucket
-		err error
+		body   []byte
+		db     *bolt.DB
+		bucket *bolt.Bucket
+		err    error
 	)
 	if db, err = bolt.Open("sendall.db", 0600, nil); err != nil {
-		fmt.Errorf("could not open db: %s", err)
+		fmt.Println("could not open db")
+		return err
 	}
 	defer db.Close()
 	err = db.Update(func(tx *bolt.Tx) error {
@@ -154,8 +177,8 @@ func saveResponse(c <-chan *http.Response) {
 	})
 
 	if err != nil {
-		fmt.Printf("create bucket error: %s\n", err)
-		return
+		fmt.Println("create bucket error")
+		return err
 	}
 	for resp := range c {
 
@@ -164,9 +187,13 @@ func saveResponse(c <-chan *http.Response) {
 			fmt.Printf("failed to read body: %s", err) // body is new url returned by server
 			continue
 		}
+		if printOnly {
+			fmt.Printf("%s\ndelete url: %s\n====\n", body, resp.Header.Get("X-Url-Delete"))
+			continue
+		}
 
 		err = db.Update(func(tx *bolt.Tx) error {
-			bucket := tx.Bucket([]byte(dbBucketName))
+			bucket = tx.Bucket([]byte(dbBucketName))
 			err := bucket.Put(body, []byte(resp.Header.Get("X-Url-Delete")))
 			return err
 		})
@@ -177,32 +204,26 @@ func saveResponse(c <-chan *http.Response) {
 		fmt.Printf("wrote %s\n", body)
 
 	}
+	return nil
 
-}
-func printResponse(c <-chan *http.Response) {
-	for resp := range c {
-		// fmt.Printf("got response from file %d\n", nfile)
-		defer resp.Body.Close()
-		if body, err := ioutil.ReadAll(resp.Body); err != nil {
-			fmt.Println(err)
-		} else {
-			fmt.Printf("%s\ndelete url: %s\n====\n", body, resp.Header.Get("X-Url-Delete"))
-		}
-	}
 }
 
 func sendRequestSaveResponse(client *http.Client, req *generalRequest) {
 
 	c := make(chan *http.Response, len(req.files))
 	go doGeneralRequest(client, req, c)
-	saveResponse(c)
+	if err := saveResponse(c, false); err != nil {
+		fmt.Println(err)
+	}
 
 }
 func sendRequestPrintResponse(client *http.Client, req *generalRequest) {
 
 	c := make(chan *http.Response, len(req.files))
 	go doGeneralRequest(client, req, c)
-	printResponse(c)
+	if err := saveResponse(c, true); err != nil {
+		fmt.Println(err)
+	}
 
 }
 

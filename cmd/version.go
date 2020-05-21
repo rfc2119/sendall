@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 )
+
 const VERSION = 0.1
 
 func init() {
