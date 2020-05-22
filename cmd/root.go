@@ -21,8 +21,8 @@ import (
 
 // all services should at least implement this
 type service interface {
-	Post(files []string)
-	Delete(files []string)
+	Post(files []string) error
+	Delete(files []string) error
 }
 
 var (

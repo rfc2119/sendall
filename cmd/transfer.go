@@ -35,7 +35,7 @@ type transferSh struct {
 	// dummy type to implement the interface
 }
 
-func (*transferSh) Post(files []string) {
+func (*transferSh) Post(files []string) error{
 
 	// files are provided straight from the cmd interface
 	fileList := make([]string, len(files)) // TODO: be careful if you changed command syntax
@@ -55,9 +55,11 @@ func (*transferSh) Post(files []string) {
 			"Max-Days":      strconv.Itoa(maxDays),
 		},
 	}
-	sendRequestSaveResponse(&httpClient, &req)
+	if err := sendRequestSaveResponse(&httpClient, &req); err != nil {
+		fmt.Println(err)
+	}
 }
-func (*transferSh) Delete(files []string) {
+func (*transferSh) Delete(files []string) error{
 
 	var (
 		db        *bolt.DB
@@ -69,8 +71,8 @@ func (*transferSh) Delete(files []string) {
 	)
 
 	if db, err = bolt.Open(dbName, 0600, nil); err != nil {
-		fmt.Println("could not open db: %s", err)
-		return
+		fmt.Println("could not open db")
+		return err
 	}
 	defer db.Close()
 	for _, file := range files { // files provided should be the exact received url
@@ -104,10 +106,12 @@ func (*transferSh) Delete(files []string) {
 
 		})
 		if err != nil {
-			fmt.Printf("error deleting %s from db", err)
+			fmt.Printf("error deleting link %s from db", file)
+			return err
 		}
 	}
 	fmt.Println("done")
+	return nil
 }
 
 var (
@@ -123,21 +127,18 @@ var (
 	transferRespHeaders = []string{ // any custom headers received on response; for reference only
 		"X-Url-Delete",
 	}
-	// transferDefaults = map[string]interface{}{ // defaults for the cmd interface; for refernce
-	// 	"downlaods": -1,
-	// 	"days":      7,
-	// 	"host":      serverProd,
-	// }
 	httpClient   = http.Client{}
 	dbName       = "sendall.db" // bolt db name
-	dbBucketName = "deleteUrls" // bucket used with bolt
-	transfer     transferSh     // service transfer.sh
+	dbBucketName = "transfer.sh" // bucket used within bolt; contains the posted urls -> deleted urls
+	transfer     service     // service transfer.sh
 	transferCmd  = &cobra.Command{
 		Use:   "transfer",
 		Short: "use transfer.sh service (credits go to DutchCoders)",
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			transfer.Post(args)
+			if err := transfer.Post(args); err != nil {
+				fmt.Println(err)
+			}
 		},
 	}
 
@@ -146,7 +147,9 @@ var (
 		Short: "delete a link posted before",
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			transfer.Delete(args)
+			if err := transfer.Delete(args); err != nil {
+				fmt.Println(err)
+			}
 		},
 	}
 )
@@ -213,7 +216,8 @@ func sendRequestSaveResponse(client *http.Client, req *generalRequest) {
 	c := make(chan *http.Response, len(req.files))
 	go doGeneralRequest(client, req, c)
 	if err := saveResponse(c, false); err != nil {
-		fmt.Println(err)
+		fmt.Println("unable to save response")
+		return err
 	}
 
 }
