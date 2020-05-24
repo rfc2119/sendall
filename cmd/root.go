@@ -3,26 +3,19 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"net/http"
 
 	// homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 )
 
-// type generalRequest struct {
-// 	method      string
-// 	host        string
-// 	files       []string
-// 	reqHeaders  map[string]string // for each c in transferReqHeaders: reqHeaders[c] = <val>
-// }
-//
-// type generalResponse struct{
-// 	respHeaders map[string]string // for each c in transferRespHeaders: reqHeaders[c] = <val>
-// }
 
-// all services should at least implement this
+// all services should implement this
 type service interface {
-	Post(files []string) error
-	Delete(files []string) error
+	// TODO: there should be some method that Post() uses on all files; this method should be a candidate as a goroutine 
+	Post(receivedHttpResponses chan<- *http.Response, extra chan<- []string) error		// constructs a new http request with requested files and send it; the response is sent to the channel receivedHttpResponses in order for the save method to save deletion tokens; the channel "extra" is used to communicate any extra information  necessary for the save method to operation
+	SaveUrl(receivedHttpResponses <-chan *http.Response, extra <-chan []string) error		// saves deletion tokens obtained from the service in local db
+	Delete() error		// fetches urls:deletion_tokens from local db (saved by the save method) and issue a delete request to the service, then deletes the record from the db
 }
 
 var (
@@ -32,25 +25,20 @@ var (
 
 	rootCmd = &cobra.Command{
 		// Version: VERSION,
-		// Use:     "sendall <host> [flags] [<cmd1> [cmd1_flags], ...]",
+		Args: cobra.MinimumNArgs(1),
 		Short: "sendall wraps several file sharing backends into one app",
-		Long:  `sendall  eases the usage of anonymous file sharing websites by wraping them under one interface. you can checkout a quick demo at <demo_website_hopefully>`,
+		Long:  "sendall  eases the usage of anonymous file-sharing websites by wraping them under one interface. you can checkout a quick demo at <demo_website_hopefully>",
 
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("root")
-			return
-		},
+		//Run: func(cmd *cobra.Command, args []string) {
+		//	fmt.Println("root")
+		//	return
+		//},
 	}
 )
 
 func init() {
 	// cobra.OnInitialize(initConfig)
 
-	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.cobra.yaml)")
-	// rootCmd.PersistentFlags().StringP("author", "a", "YOUR NAME", "author name for copyright attribution")
-	// rootCmd.PersistentFlags().StringVarP(&userLicense, "license", "l", "", "name of license for the project")
-
-	// main commands are defined here (are they added by default ? verify)
 }
 
 func initConfig() {
