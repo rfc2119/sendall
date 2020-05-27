@@ -20,16 +20,6 @@ const (
 	serverProd = "https://transfer.sh"
 )
 
-type generalRequest struct {
-	method     string
-	host       string
-	files      []string
-	reqHeaders map[string]string // for each c in transferReqHeaders: reqHeaders[c] = <val>
-}
-
-type generalResponse struct {
-	respHeaders map[string]string // for each c in transferRespHeaders: reqHeaders[c] = <val>
-}
 
 type transferSh struct {
 	// previously: a dummy empty struct{} to implement the interface
@@ -197,12 +187,19 @@ func (receiver *transferSh) Delete() error {
 			fmt.Printf("issuing request failed: %s\n", err)
 			continue
 		}
+		// if receiver.debug {
+		// 	resp.Write(os.Stdout)
+		// }
 		defer resp.Body.Close()
-		body, _ := ioutil.ReadAll(resp.Body)
-		if receiver.debug{
-			fmt.Println(string(body))
+		// body, _ := ioutil.ReadAll(resp.Body)
+		// if receiver.debug{
+		// 	fmt.Println(string(body))
+		// }
+		// TODO: assume here we got a 200 response code (what is 200 for transfer ?)
+		if resp.Status != "200 OK" {
+			fmt.Println("welp, method not allowed (invalid url or file was deleted)")
+			continue
 		}
-		// TODO: assume here we got a 200 response code
 		err = db.Update(func(tx *bolt.Tx) error {
 
 			bucket = tx.Bucket([]byte(receiver.dbBucketName))
@@ -265,7 +262,7 @@ var (
 		Short: "delete a link posted before",
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			// flags have populated cmd memebrs of the service struct
+			// flags have populated cmd memebrs of the "transfer" struct
 			transfer.filePaths = args	// it is expected that provided arguments are the exact links you received from the service
 			if err := transfer.Delete(); err != nil {
 				fmt.Println(err)
@@ -281,27 +278,6 @@ func init() {
 	transferShCmd.AddCommand(transferShDeleteCmd)
 	rootCmd.AddCommand(transferShCmd)
 }
-
-// func sendRequestSaveResponse(client *http.Client, req *generalRequest) error{
-//
-// 	c := make(chan *http.Response, len(req.files))
-// 	go doGeneralRequest(client, req, c)
-// 	if err := saveResponse(c, false); err != nil {
-// 		fmt.Println("unable to save response")
-// 		return err
-// 	}
-// 	return nil
-//
-// }
-// func sendRequestPrintResponse(client *http.Client, req *generalRequest) {
-//
-// 	c := make(chan *http.Response, len(req.files))
-// 	go doGeneralRequest(client, req, c)
-// 	if err := saveResponse(c, true); err != nil {
-// 		fmt.Println(err)
-// 	}
-//
-// }
 
 // PUT: /put/$filename, /upload/$filename, /$filename
 // POST: /

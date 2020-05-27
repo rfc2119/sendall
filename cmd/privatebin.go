@@ -196,7 +196,7 @@ func (pbinReciever *privateBin) Delete() error {
 			return nil
 		})
 		if len(deleteUrl) == 0 {
-			fmt.Println("link %s does not have an entry in db", file)
+			fmt.Printf("link %s does not have an entry in db", file)
 			continue
 		}
 		if resp, err = http.Get(string(deleteUrl)); err != nil { // TODO: find out if Client.Do() does it in a goroutine
