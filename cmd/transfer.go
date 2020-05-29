@@ -66,12 +66,12 @@ func (receiver *transferSh) SaveUrl(receivedHttpResponses <-chan *http.Response,
 
 		defer resp.Body.Close()
 		if body, err = ioutil.ReadAll(resp.Body); err != nil {
-			fmt.Printf("failed to read body: %s", err) // body is new url returned by server
+			fmt.Printf("failed to read body: %s", err)
 			continue
 		}
-		if receiver.debug { // TODO: uncomment this out to ease writing tests; printOnly may be added to the transferSh struct
-			fmt.Printf("%s\ndelete url: %s\n====\n", body, resp.Header.Get("X-Url-Delete"))
-		}
+		// fmt.Printf("%s\ndelete url: %s\n====\n", body, resp.Header.Get("X-Url-Delete"))
+		fmt.Println(string(body))// body is new url returned by the server
+
 
 		err = db.Update(func(tx *bolt.Tx) error {
 			bucket = tx.Bucket([]byte(receiver.dbBucketName))
@@ -99,6 +99,7 @@ func (receiver *transferSh) Post(receivedHttpResponses chan<- *http.Response, ex
 		newRequest  *http.Request
 		holup       sync.WaitGroup
 	)
+	allRequestsOk := true
 	for i := 0; i < len(receiver.filePaths); i++ {
 
 		if file, err = os.Open(receiver.filePaths[i]); err != nil {
@@ -121,37 +122,27 @@ func (receiver *transferSh) Post(receivedHttpResponses chan<- *http.Response, ex
 		newRequest.Header.Add("Max-Days", strconv.Itoa(receiver.maxDays))
 
 		holup.Add(1)
-		go func(req *http.Request, c chan<- *http.Response) { // TODO: not sure if client.Do() already dispatches a goroutine; if so, this is a waste
+		go func(req *http.Request, c chan<- *http.Response, reqOk *bool) {
 			if resp, err := receiver.httpClient.Do(req); err != nil {
 				fmt.Printf("issuing request failed: %s", err)
+				*reqOk = false
 			} else {
 				c <- resp
 				// should pass here any extra strings to channel extra, but there is nothing to pass
 			}
 			holup.Done()
-		}(newRequest, receivedHttpResponses)
+		}(newRequest, receivedHttpResponses, &allRequestsOk)
 	}
 
+	fmt.Println(allRequestsOk)
+	if allRequestsOk == false {
+		return fmt.Errorf("one or more request failed")
+	}
 	holup.Wait()
 	close(receivedHttpResponses)
 	close(extra)
 	return nil
 }
-
-//req := generalRequest{
-//	method: "PUT", // default method is to upload
-//	host:   receiver.hostUrl,
-//	files:  fileList,
-//	reqHeaders: map[string]string{
-//		"Max-Downloads": strconv.Itoa(receiver.maxDownloads), // TODO: Itoa() all the fields ?
-//		"Max-Days":      strconv.Itoa(receiver.maxDays),
-//	},
-//}
-//if err := sendRequestSaveResponse(receiver.httpClient, &req); err != nil {
-//	fmt.Println(err)
-//	return err
-//}
-//return nil
 
 func (receiver *transferSh) Delete() error {
 
@@ -164,6 +155,7 @@ func (receiver *transferSh) Delete() error {
 		bucket    *bolt.Bucket
 	)
 
+	allRequestsOk := true
 	if db, err = bolt.Open(receiver.dbName, 0600, nil); err != nil {
 		fmt.Println("could not open db")
 		return err
@@ -180,11 +172,13 @@ func (receiver *transferSh) Delete() error {
 		})
 		if len(deleteUrl) == 0 {
 			fmt.Printf("link %s does not have an entry in db\n", file)
+			allRequestsOk = false
 			continue
 		}
 		req, _ = http.NewRequest("DELETE", string(deleteUrl), nil)
 		if resp, err = receiver.httpClient.Do(req); err != nil { // TODO: find out if Client.Do() does it in a goroutine
 			fmt.Printf("issuing request failed: %s\n", err)
+			allRequestsOk = false
 			continue
 		}
 		// if receiver.debug {
@@ -198,6 +192,7 @@ func (receiver *transferSh) Delete() error {
 		// TODO: assume here we got a 200 response code (what is 200 for transfer ?)
 		if resp.Status != "200 OK" {
 			fmt.Println("welp, method not allowed (invalid url or file was deleted)")
+			allRequestsOk = false
 			continue
 		}
 		err = db.Update(func(tx *bolt.Tx) error {
@@ -210,8 +205,12 @@ func (receiver *transferSh) Delete() error {
 		})
 		if err != nil {
 			fmt.Printf("error deleting link %s from db\n", file)
-			return err
+			allRequestsOk = false
+			continue
 		}
+	}
+	if allRequestsOk == false {
+		return fmt.Errorf("one or more files were not deleted")
 	}
 	fmt.Println("done")
 	return nil

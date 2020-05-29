@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"regexp"
 	"testing"
 	"fmt"
@@ -11,19 +12,32 @@ import (
 var (
 	globalHttpClient http.Client // one client fits all
 	regexResponse    = regexp.MustCompile(`^https?://.*?(:\d{2,4})?/\w{5,6}/`)
+	testDb	map[string]string
 )
 
 const (
-	serverTest      = "http://127.0.0.1:8090/"
+	// serverTest      = "http://127.0.0.1:8090/"
 	validDbName     = "sendall_test.db"
 	validBucketName = "transfer.sh"
 )
 
 type transferShTest struct { // TODO
-	transferSh	// struct is embedded into the test struct (
+	transferSh	// struct is embedded into the test struct
 	shouldFail bool // idk how to mark a failed test in go as a success (i.e the function under test should fail and return an error, but it is the expected outcome as it was given a malformed input); i might be structuring this wrong; this bool should help in marking failures as successful test cases
 }
 
+func uploadHandler(w http.ResponseWriter, req *http.Request){
+
+	// If WriteHeader is not called explicitly, the first call to Write
+	// will trigger an implicit WriteHeader(http.StatusOK).
+	// w.WriteHeader(http.StatusOK)
+	w.Header().Set("Server", "Transfer.sh HTTP Server 1.0"        )
+	w.Header().Set("X-Made-With", "<3 by DutchCoders"             )
+	w.Header().Set("X-Served-By", "Proudly served by DutchCoders" )
+	// io.WriteString(w, req.URL)
+	fmt.Fprintf(w, "server: %s", req.URL)
+
+}
 func SimulatePostRequest(transfer *transferShTest) error {
 
 	// should honor the failure bit and act accordingly
@@ -35,8 +49,9 @@ func SimulatePostRequest(transfer *transferShTest) error {
 
 	chanHttpResponses := make(chan *http.Response, len(transfer.filePaths))
 	chanExtraStrings := make(chan []string, 0) // we won't be sending any extra information for this service
+	fmt.Println("ENTER TEST")
 	if err = transfer.Post(chanHttpResponses, chanExtraStrings); err != nil {
-		fmt.Println(err)
+		fmt.Println("WE ERRORED!")
 		return err
 	}
 	// inspect the body
@@ -54,7 +69,11 @@ func SimulatePostRequest(transfer *transferShTest) error {
 	return nil
 
 }
-func TestSuite1(t *testing.T) {
+func TestPost(t *testing.T) {
+	// start the mock server
+	testServer := httptest.NewServer(http.HandlerFunc(uploadHandler))
+	defer testServer.Close()
+	serverTest := testServer.URL
 	testSlice := []transferShTest{ // hostUrl, maxDOwnloads, maxDays, httpClient, filePaths, dbName,, dbBucketNaem, debug
 		// normal test
 		{
@@ -108,3 +127,8 @@ func TestSuite1(t *testing.T) {
 		}
 	}
 }
+
+// func TestSaveUrl(t *testing.T){
+// 
+// 	http.Res
+// }
