@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	// "path/filepath"
 	"strconv"
 	"sync"
 
@@ -106,15 +105,13 @@ func (receiver *transferSh) Post(receivedHttpResponses chan<- *http.Response, ex
 			fmt.Println(err)
 			continue
 		}
-		if receiver.hostUrl == serverProd { // comment this out; this is for local developing
-			receiver.hostUrl = fmt.Sprintf("%s:%s/", serverDev, portDev)
-		}
 		// url = receiver.hostUrl + file.Name()      // TODO: url need to end in '/'
-		url = receiver.hostUrl + sanitize(file.Name())	// TODO: imo we only need filepath.Clean(file.Name())
+		url = receiver.hostUrl + "/" + sanitize(file.Name())	// TODO: imo we only need filepath.Clean(file.Name())
 		fileContent = bufio.NewReader(file)                        // TODO: is this the appropriate way to read a file as an io.Reader ?
 		newRequest, err = http.NewRequest("PUT", url, fileContent) // transfer.sh resolves file path and generates a folder with random name
 		if err != nil {
 			fmt.Println(err)
+            allRequestsOk = false
 			continue
 		}
 		// adding custom headers
@@ -123,22 +120,21 @@ func (receiver *transferSh) Post(receivedHttpResponses chan<- *http.Response, ex
 
 		holup.Add(1)
 		go func(req *http.Request, c chan<- *http.Response, reqOk *bool) {
+			defer holup.Done()
 			if resp, err := receiver.httpClient.Do(req); err != nil {
-				fmt.Printf("issuing request failed: %s", err)
+				fmt.Printf("issuing request failed: %s\n", err)
 				*reqOk = false
 			} else {
 				c <- resp
 				// should pass here any extra strings to channel extra, but there is nothing to pass
 			}
-			holup.Done()
 		}(newRequest, receivedHttpResponses, &allRequestsOk)
 	}
 
-	fmt.Println(allRequestsOk)
+	holup.Wait()
 	if allRequestsOk == false {
 		return fmt.Errorf("one or more request failed")
 	}
-	holup.Wait()
 	close(receivedHttpResponses)
 	close(extra)
 	return nil
