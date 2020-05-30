@@ -49,12 +49,14 @@ func encodeToToken(number int64) string {
 }
 
 
-type transferShTest struct { // TODO
+type transferShTest struct {
 	transferSh	// struct is embedded into the test struct
-	shouldFail bool // idk how to mark a failed test in go as a success (i.e the function under test should fail and return an error, but it is the expected outcome as it was given a malformed input); i am definitely structuring this wrong; this bool should help in marking failures as successful test cases
+	shouldFail bool // when a test returns a valid err, it should not be marked as failure, because the input was already malformed; i am definitely structuring this wrong; 
 }
 
 func uploadHandler(w http.ResponseWriter, req *http.Request){
+    // a mock handler that always returns a valid URL
+    // this should be changed soon
 
 	// If WriteHeader is not called explicitly, the first call to Write
 	// will trigger an implicit WriteHeader(http.StatusOK).
@@ -71,7 +73,6 @@ func uploadHandler(w http.ResponseWriter, req *http.Request){
 	w.Header().Set("X-Served-By", "Proudly served by DutchCoders" )
 	w.Header().Set("X-Url-Delete", deleteUrl)
     io.WriteString(w, uploadUrl)
-
 }
 
 func SimulatePostRequest(transfer *transferShTest) error {
@@ -83,6 +84,7 @@ func SimulatePostRequest(transfer *transferShTest) error {
 		body []byte
 	)
 
+        postedUrls = []string{}
 	chanHttpResponses := make(chan *http.Response, len(transfer.filePaths))
 	chanExtraStrings := make(chan []string, 0) // we won't be sending any extra information for this service
 	if err = transfer.Post(chanHttpResponses, chanExtraStrings); err != nil {
@@ -97,25 +99,34 @@ func SimulatePostRequest(transfer *transferShTest) error {
 			return err
 		}
 		if matched := regexResponse.Match(body); matched == false {
-			return fmt.Errorf("response string does not match the regex; response: %s", string(body))
+			return fmt.Errorf("response string does not match the regex; response is: %s", string(body))
 		}
+
+        postedUrls = append(postedUrls, string(body)) // to test Delete() as well
+
 	}
-	return nil
+	return nil, postedUrls
 
 }
+
 func TestPost(t *testing.T) {
 	// start the mock server
+    var (
+        err error
+        postedUrls []string
+    )
 	testServer := httptest.NewServer(http.HandlerFunc(uploadHandler))
 	defer testServer.Close()
-	serverTest := testServer.URL
-	testSlice := []transferShTest{ // hostUrl, maxDOwnloads, maxDays, httpClient, filePaths, dbName,, dbBucketNaem, debug
-		// normal test
+	hostUrl := testServer.URL
+	sliceTests := []transferShTest{
+        // hostUrl, maxDOwnloads, maxDays, httpClient, filePaths, dbName,, dbBucketNaem, debug
+		// normal settings
 		{
-			transferSh: transferSh{serverTest, -1, 7, &globalHttpClient, []string{"/etc/hostname"}, validDbName, validBucketName, false},
+			transferSh: transferSh{hostUrl, -1, 7, &globalHttpClient, []string{"/etc/hostname"}, validDbName, validBucketName, false},
 			shouldFail: false,
 		},
 
-		// server that does not support the latest version
+		// server that does not support the latest version with a valid file
 		{
 			transferSh: transferSh{"https://transfer.sh", -1, 7, &globalHttpClient, []string{"/etc/hostname"}, validDbName, validBucketName, false},
 			shouldFail: false,
@@ -123,42 +134,44 @@ func TestPost(t *testing.T) {
 
 		// invalid db name (i.e new db)
 		{
-			transferSh: transferSh{serverTest, -1, 7, &globalHttpClient, []string{"/etc/hostname"}, "welp", validBucketName, false},
+			transferSh: transferSh{hostUrl, -1, 7, &globalHttpClient, []string{"/etc/hostname"}, "welp", validBucketName, false},
 			shouldFail: false,
 		},
 
 		// invalid bucket name (i.e new bucket)
 		{
-			transferSh: transferSh{serverTest, -1, 7, &globalHttpClient, []string{"/etc/hostname"}, validDbName, "invalidBucket", false},
+			transferSh: transferSh{hostUrl, -1, 7, &globalHttpClient, []string{"/etc/hostname"}, validDbName, "invalidBucket", false},
 			shouldFail: true,
 		},
 
 		// ivalid db name and bucket name (i.e new db and bucket)
 		{
-			transferSh: transferSh{serverTest, -1, 7, &globalHttpClient, []string{"/etc/hostname"}, "welp", "invalidBucket", false},
+			transferSh: transferSh{hostUrl, -1, 7, &globalHttpClient, []string{"/etc/hostname"}, "welp", "invalidBucket", false},
 			shouldFail: false,
 		},
 
-		// invalid file path (reminder: the []string{}string provided here should contain absolute paths]
+		// invalid file path (reminder: the []string provided here should contain absolute paths)
 		{
-			transferSh: transferSh{serverTest, -1, 7, &globalHttpClient, []string{"/hostname"}, validDbName, validBucketName, false},
+			transferSh: transferSh{hostUrl, -1, 7, &globalHttpClient, []string{"/hostname"}, validDbName, validBucketName, false},
 			shouldFail: true,
 		},
 		{
-			transferSh: transferSh{serverTest, -1, 7, &globalHttpClient, []string{"/hostname", "/welp"}, validDbName, validBucketName, false},
+			transferSh: transferSh{hostUrl, -1, 7, &globalHttpClient, []string{"/hostname", "/welp"}, validDbName, validBucketName, false},
 			shouldFail: true,
 		},
 
 		// valid file paths
 		{
-			transferSh: transferSh{serverTest, -1, 7, &globalHttpClient, []string{"/etc/hostname", "/etc/passwd"}, validDbName, validBucketName, false},
+			transferSh: transferSh{hostUrl, -1, 7, &globalHttpClient, []string{"/etc/hostname", "/etc/passwd"}, validDbName, validBucketName, false},
 			shouldFail: false,
 		},
 	}
-	for _, testTransfer := range testSlice {
-		if err := SimulatePostRequest(&testTransfer); err != nil && testTransfer.shouldFail == false {
+	for _, test := range sliceTests {
+		if err, postedUrls = SimulatePostRequest(&test); err != nil && test.shouldFail == false {
 			t.Error(err)
 		}
+        // test.filePaths = postedUrls
+        // if err = test.Delete(); err != nil 
 	}
 }
 

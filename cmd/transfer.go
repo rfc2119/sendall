@@ -47,6 +47,7 @@ func (receiver *transferSh) SaveUrl(receivedHttpResponses <-chan *http.Response,
 		bucket *bolt.Bucket
 		err    error
 	)
+    allUrlsOk := true
 	if db, err = bolt.Open(receiver.dbName, 0600, nil); err != nil {
 		fmt.Println("could not open db")
 		return err
@@ -66,6 +67,7 @@ func (receiver *transferSh) SaveUrl(receivedHttpResponses <-chan *http.Response,
 		defer resp.Body.Close()
 		if body, err = ioutil.ReadAll(resp.Body); err != nil {
 			fmt.Printf("failed to read body: %s", err)
+            allUrlsOk = false
 			continue
 		}
 		// fmt.Printf("%s\ndelete url: %s\n====\n", body, resp.Header.Get("X-Url-Delete"))
@@ -78,12 +80,17 @@ func (receiver *transferSh) SaveUrl(receivedHttpResponses <-chan *http.Response,
 			return err
 		})
 		if err != nil {
-			fmt.Printf("error on writing %s: %s", body, err)
+			fmt.Printf("error on writing %s: %s\n", body, err)
+            allUrlsOk = false
 			continue
 		}
 		fmt.Printf("wrote %s\n", body)
 
 	}
+    if allUrlsOk == false {
+        return fmt.Errorf("one or more URLs were not saved properly")
+    }
+
 	return nil
 
 }
@@ -187,7 +194,7 @@ func (receiver *transferSh) Delete() error {
 		// }
 		// TODO: assume here we got a 200 response code (what is 200 for transfer ?)
 		if resp.Status != "200 OK" {
-			fmt.Println("welp, method not allowed (invalid url or file was deleted)")
+			fmt.Println("method not allowed (invalid url or file was deleted)")
 			allRequestsOk = false
 			continue
 		}
