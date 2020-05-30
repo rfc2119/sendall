@@ -1,20 +1,20 @@
 package cmd
 
 import (
+	"fmt"
+	"io"
+	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
 	"testing"
-	"fmt"
-    "io"
-	"io/ioutil"
-    "math/rand"
 )
 
 var (
 	globalHttpClient http.Client // one client fits all
 	regexResponse    = regexp.MustCompile(`^https?://.*?(:\d{2,5})?/\w{5,6}/`)
-	testDb	= make(map[string]string)
+	testDb           = make(map[string]string)
 )
 
 const (
@@ -27,6 +27,7 @@ const (
 	// someone set us up the bomb !!
 	BASE = int64(len(SYMBOLS))
 )
+
 /*
 https://github.com/fs111/kurz.go/blob/master/src/codec.go
 
@@ -48,34 +49,33 @@ func encodeToToken(number int64) string {
 	return result
 }
 
-
 type transferShTest struct {
-	transferSh	// struct is embedded into the test struct
-	shouldFail bool // when a test returns a valid err, it should not be marked as failure, because the input was already malformed; i am definitely structuring this wrong; 
+	transferSh      // struct is embedded into the test struct
+	shouldFail bool // when a test returns a valid err, it should not be marked as failure, because the input was already malformed; i am definitely structuring this wrong;
 }
 
-func uploadHandler(w http.ResponseWriter, req *http.Request){
-    // a mock handler that always returns a valid URL
-    // this should be changed soon
+func uploadHandler(w http.ResponseWriter, req *http.Request) {
+	// a mock handler that always returns a valid URL
+	// this should be changed soon
 
 	// If WriteHeader is not called explicitly, the first call to Write
 	// will trigger an implicit WriteHeader(http.StatusOK).
 	// w.WriteHeader(http.StatusOK)
 	// io.WriteString(w, req.URL)
-    uploadToken := encodeToToken(10000000 + int64(rand.Intn(1000000000)))
-    deleteToken := encodeToToken(10000000+int64(rand.Intn(1000000000))) + encodeToToken(10000000+int64(rand.Intn(1000000000)))
-    uploadUrl := fmt.Sprintf("http://%s/%s%s",  req.Host, uploadToken, req.URL)
-    deleteUrl := fmt.Sprintf("%s/%s", uploadUrl, deleteToken)
-    testDb[uploadUrl] = deleteUrl
+	uploadToken := encodeToToken(10000000 + int64(rand.Intn(1000000000)))
+	deleteToken := encodeToToken(10000000+int64(rand.Intn(1000000000))) + encodeToToken(10000000+int64(rand.Intn(1000000000)))
+	uploadUrl := fmt.Sprintf("http://%s/%s%s", req.Host, uploadToken, req.URL)
+	deleteUrl := fmt.Sprintf("%s/%s", uploadUrl, deleteToken)
+	testDb[uploadUrl] = deleteUrl
 
-	w.Header().Set("Server", "Transfer.sh HTTP Server 1.0"        )
-	w.Header().Set("X-Made-With", "<3 by DutchCoders"             )
-	w.Header().Set("X-Served-By", "Proudly served by DutchCoders" )
+	w.Header().Set("Server", "Transfer.sh HTTP Server 1.0")
+	w.Header().Set("X-Made-With", "<3 by DutchCoders")
+	w.Header().Set("X-Served-By", "Proudly served by DutchCoders")
 	w.Header().Set("X-Url-Delete", deleteUrl)
-    io.WriteString(w, uploadUrl)
+	io.WriteString(w, uploadUrl)
 }
 
-func SimulatePostRequest(transfer *transferShTest) error {
+func SimulatePostRequest(transfer *transferShTest) (error, []string) {
 
 	// should honor the failure bit and act accordingly
 	// post, then check body for url
@@ -84,11 +84,11 @@ func SimulatePostRequest(transfer *transferShTest) error {
 		body []byte
 	)
 
-        postedUrls = []string{}
+    postedUrls := []string{}
 	chanHttpResponses := make(chan *http.Response, len(transfer.filePaths))
 	chanExtraStrings := make(chan []string, 0) // we won't be sending any extra information for this service
 	if err = transfer.Post(chanHttpResponses, chanExtraStrings); err != nil {
-		return err
+		return err, postedUrls
 	}
 	// inspect the body
 	for resp := range chanHttpResponses {
@@ -96,13 +96,13 @@ func SimulatePostRequest(transfer *transferShTest) error {
 
 		if body, err = ioutil.ReadAll(resp.Body); err != nil {
 			fmt.Println("failed to read body") // body is new url returned by server
-			return err
+			return err, postedUrls
 		}
 		if matched := regexResponse.Match(body); matched == false {
-			return fmt.Errorf("response string does not match the regex; response is: %s", string(body))
+			return fmt.Errorf("response string does not match the regex; response is: %s", string(body)), postedUrls
 		}
 
-        postedUrls = append(postedUrls, string(body)) // to test Delete() as well
+		postedUrls = append(postedUrls, string(body)) // to test Delete() as well
 
 	}
 	return nil, postedUrls
@@ -111,15 +111,15 @@ func SimulatePostRequest(transfer *transferShTest) error {
 
 func TestPost(t *testing.T) {
 	// start the mock server
-    var (
-        err error
-        postedUrls []string
-    )
+	var (
+		err        error
+		postedUrls []string
+	)
 	testServer := httptest.NewServer(http.HandlerFunc(uploadHandler))
 	defer testServer.Close()
 	hostUrl := testServer.URL
 	sliceTests := []transferShTest{
-        // hostUrl, maxDOwnloads, maxDays, httpClient, filePaths, dbName,, dbBucketNaem, debug
+		// hostUrl, maxDOwnloads, maxDays, httpClient, filePaths, dbName,, dbBucketNaem, debug
 		// normal settings
 		{
 			transferSh: transferSh{hostUrl, -1, 7, &globalHttpClient, []string{"/etc/hostname"}, validDbName, validBucketName, false},
@@ -170,12 +170,13 @@ func TestPost(t *testing.T) {
 		if err, postedUrls = SimulatePostRequest(&test); err != nil && test.shouldFail == false {
 			t.Error(err)
 		}
-        // test.filePaths = postedUrls
-        // if err = test.Delete(); err != nil 
+        fmt.Println(len(postedUrls))        // make the compiler happy
+		// test.filePaths = postedUrls
+		// if err = test.Delete(); err != nil
 	}
 }
 
 // func TestSaveUrl(t *testing.T){
-// 
+//
 // 	http.Res
 // }

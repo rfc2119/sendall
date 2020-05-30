@@ -19,7 +19,6 @@ const (
 	serverProd = "https://transfer.sh"
 )
 
-
 type transferSh struct {
 	// previously: a dummy empty struct{} to implement the interface
 
@@ -35,8 +34,7 @@ type transferSh struct {
 	dbBucketName string
 
 	// other
-	debug		bool
-
+	debug bool
 }
 
 func (receiver *transferSh) SaveUrl(receivedHttpResponses <-chan *http.Response, extra <-chan []string) error {
@@ -47,7 +45,7 @@ func (receiver *transferSh) SaveUrl(receivedHttpResponses <-chan *http.Response,
 		bucket *bolt.Bucket
 		err    error
 	)
-    allUrlsOk := true
+	allUrlsOk := true
 	if db, err = bolt.Open(receiver.dbName, 0600, nil); err != nil {
 		fmt.Println("could not open db")
 		return err
@@ -67,12 +65,11 @@ func (receiver *transferSh) SaveUrl(receivedHttpResponses <-chan *http.Response,
 		defer resp.Body.Close()
 		if body, err = ioutil.ReadAll(resp.Body); err != nil {
 			fmt.Printf("failed to read body: %s", err)
-            allUrlsOk = false
+			allUrlsOk = false
 			continue
 		}
 		// fmt.Printf("%s\ndelete url: %s\n====\n", body, resp.Header.Get("X-Url-Delete"))
-		fmt.Println(string(body))// body is new url returned by the server
-
+		fmt.Println(string(body)) // body is new url returned by the server
 
 		err = db.Update(func(tx *bolt.Tx) error {
 			bucket = tx.Bucket([]byte(receiver.dbBucketName))
@@ -81,15 +78,15 @@ func (receiver *transferSh) SaveUrl(receivedHttpResponses <-chan *http.Response,
 		})
 		if err != nil {
 			fmt.Printf("error on writing %s: %s\n", body, err)
-            allUrlsOk = false
+			allUrlsOk = false
 			continue
 		}
 		fmt.Printf("wrote %s\n", body)
 
 	}
-    if allUrlsOk == false {
-        return fmt.Errorf("one or more URLs were not saved properly")
-    }
+	if allUrlsOk == false {
+		return fmt.Errorf("one or more URLs were not saved properly")
+	}
 
 	return nil
 
@@ -113,12 +110,12 @@ func (receiver *transferSh) Post(receivedHttpResponses chan<- *http.Response, ex
 			continue
 		}
 		// url = receiver.hostUrl + file.Name()      // TODO: url need to end in '/'
-		url = receiver.hostUrl + "/" + sanitize(file.Name())	// TODO: imo we only need filepath.Clean(file.Name())
+		url = receiver.hostUrl + "/" + sanitize(file.Name())       // TODO: imo we only need filepath.Clean(file.Name())
 		fileContent = bufio.NewReader(file)                        // TODO: is this the appropriate way to read a file as an io.Reader ?
 		newRequest, err = http.NewRequest("PUT", url, fileContent) // transfer.sh resolves file path and generates a folder with random name
 		if err != nil {
 			fmt.Println(err)
-            allRequestsOk = false
+			allRequestsOk = false
 			continue
 		}
 		// adding custom headers
@@ -228,7 +225,7 @@ var (
 		httpClient:   &http.Client{},
 		dbName:       "sendall.db",  // bolt db name
 		dbBucketName: "transfer.sh", // bucket used within bolt; contains the posted urls -> deleted urls
-		debug: true,
+		debug:        true,
 	}
 	// ======
 	transferReqHeaders = []string{ // any custom headers used in issuing the request; for reference only
@@ -237,7 +234,6 @@ var (
 	}
 	transferRespHeaders = []string{ // any custom headers received on response; for reference only
 		"X-Url-Delete",
-		
 	}
 	transferShCmd = &cobra.Command{
 		Use:   "transfer",
@@ -265,7 +261,7 @@ var (
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			// flags have populated cmd memebrs of the "transfer" struct
-			transfer.filePaths = args	// it is expected that provided arguments are the exact links you received from the service
+			transfer.filePaths = args // it is expected that provided arguments are the exact links you received from the service
 			if err := transfer.Delete(); err != nil {
 				fmt.Println(err)
 			}
