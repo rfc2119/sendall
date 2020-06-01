@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	// "errors"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -9,6 +10,9 @@ import (
 	"net/http/httptest"
 	"regexp"
 	"testing"
+
+	"github.com/boltdb/bolt"
+	"github.com/gorilla/mux"
 )
 
 var (
@@ -66,7 +70,25 @@ func uploadHandler(w http.ResponseWriter, req *http.Request) {
 	deleteToken := encodeToToken(10000000+int64(rand.Intn(1000000000))) + encodeToToken(10000000+int64(rand.Intn(1000000000)))
 	uploadUrl := fmt.Sprintf("http://%s/%s%s", req.Host, uploadToken, req.URL)
 	deleteUrl := fmt.Sprintf("%s/%s", uploadUrl, deleteToken)
-	testDb[uploadUrl] = deleteUrl
+
+	// update db
+	// testDb[uploadUrl] = deleteUrl
+	db, err := bolt.Open(validDbName, 0600, nil)
+	if err != nil {
+
+		fmt.Println("could not open db")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer db.Close()
+	err = db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(validBucketName))
+		err := bucket.Put([]byte(uploadUrl), []byte(deleteUrl))
+		return err
+	})
+	if err != nil {
+		fmt.Println("welp")
+	}
 
 	w.Header().Set("Server", "Transfer.sh HTTP Server 1.0")
 	w.Header().Set("X-Made-With", "<3 by DutchCoders")
@@ -75,6 +97,36 @@ func uploadHandler(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, uploadUrl)
 }
 
+func deleteHandler(w http.ResponseWriter, req *http.Request) {
+	// if a client has dialed this url, then we're sure it's the delete url.
+	// Delete() searches the database for the delete link, and issue a delete
+	// request. since this handler is called after being matching with a regex,
+	// it's likely his is a legit request
+	w.WriteHeader(http.StatusOK)
+}
+
+func initDb() error {
+	var (
+		db  *bolt.DB
+		err error
+	)
+	if db, err = bolt.Open(validDbName, 0600, nil); err != nil {
+		fmt.Println("could not open db")
+		return err
+	}
+	defer db.Close()
+	err = db.Update(func(tx *bolt.Tx) error {
+		_, err = tx.CreateBucketIfNotExists([]byte(validBucketName))
+		return err
+	})
+
+	if err != nil {
+		fmt.Println("create bucket error")
+		return err
+	}
+	return nil
+
+}
 func SimulatePostRequest(transfer *transferShTest) (error, []string) {
 
 	// should honor the failure bit and act accordingly
@@ -84,7 +136,7 @@ func SimulatePostRequest(transfer *transferShTest) (error, []string) {
 		body []byte
 	)
 
-    postedUrls := []string{}
+	postedUrls := []string{}
 	chanHttpResponses := make(chan *http.Response, len(transfer.filePaths))
 	chanExtraStrings := make(chan []string, 0) // we won't be sending any extra information for this service
 	if err = transfer.Post(chanHttpResponses, chanExtraStrings); err != nil {
@@ -109,15 +161,28 @@ func SimulatePostRequest(transfer *transferShTest) (error, []string) {
 
 }
 
-func TestPost(t *testing.T) {
-	// start the mock server
+func TestPostAndDelete(t *testing.T) {
 	var (
 		err        error
 		postedUrls []string
 	)
-	testServer := httptest.NewServer(http.HandlerFunc(uploadHandler))
+	if err = initDb(); err != nil {
+		fmt.Println(err)
+	}
+
+	// start the mock server
+	router := mux.NewRouter()
+	// router.Methods("PUT", "DELETE")     // allow only these methods for testing
+	router.HandleFunc("/{token}/{filename}/{deletionToken:\\w{10,12}}", deleteHandler).Methods("DELETE")
+	router.HandleFunc("/put/{filename}", uploadHandler).Methods("PUT")
+	router.HandleFunc("/upload/{filename}", uploadHandler).Methods("PUT")
+	router.HandleFunc("/{filename}", uploadHandler).Methods("PUT")
+
+	testServer := httptest.NewServer(router)
 	defer testServer.Close()
 	hostUrl := testServer.URL
+
+	// wannabe tests
 	sliceTests := []transferShTest{
 		// hostUrl, maxDOwnloads, maxDays, httpClient, filePaths, dbName,, dbBucketNaem, debug
 		// normal settings
@@ -135,7 +200,7 @@ func TestPost(t *testing.T) {
 		// invalid db name (i.e new db)
 		{
 			transferSh: transferSh{hostUrl, -1, 7, &globalHttpClient, []string{"/etc/hostname"}, "welp", validBucketName, false},
-			shouldFail: false,
+			shouldFail: true,
 		},
 
 		// invalid bucket name (i.e new bucket)
@@ -147,7 +212,7 @@ func TestPost(t *testing.T) {
 		// ivalid db name and bucket name (i.e new db and bucket)
 		{
 			transferSh: transferSh{hostUrl, -1, 7, &globalHttpClient, []string{"/etc/hostname"}, "welp", "invalidBucket", false},
-			shouldFail: false,
+			shouldFail: true,
 		},
 
 		// invalid file path (reminder: the []string provided here should contain absolute paths)
@@ -166,17 +231,20 @@ func TestPost(t *testing.T) {
 			shouldFail: false,
 		},
 	}
+
+	// using tests
 	for _, test := range sliceTests {
 		if err, postedUrls = SimulatePostRequest(&test); err != nil && test.shouldFail == false {
 			t.Error(err)
 		}
-        fmt.Println(len(postedUrls))        // make the compiler happy
-		// test.filePaths = postedUrls
-		// if err = test.Delete(); err != nil
+		test.filePaths = postedUrls
+		if err = test.Delete(); err != nil && test.shouldFail == false {
+			t.Error(err)
+		}
 	}
 }
 
+// TODO: it'll be a bit tiresome to test saveUrl, so i opted for another option: make the server save the url instead of the client. of course saveUrl is not tested in this way, but it's a temporary solution
 // func TestSaveUrl(t *testing.T){
 //
-// 	http.Res
 // }

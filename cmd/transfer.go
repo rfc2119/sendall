@@ -154,13 +154,28 @@ func (receiver *transferSh) Delete() error {
 		resp      *http.Response
 		bucket    *bolt.Bucket
 	)
-
 	allRequestsOk := true
+
+	// check if the db exists or not, also check the bucket
+	if _, err = os.Stat(receiver.dbName); os.IsNotExist(err) {
+		fmt.Println("delete: db file does not exist")
+		return err
+	}
+	if err != nil {
+		fmt.Println("create bucket error")
+		return err
+	}
+
+	// open db, check if bucket exists; fetch delete link and request deletion
 	if db, err = bolt.Open(receiver.dbName, 0600, nil); err != nil {
 		fmt.Println("could not open db")
 		return err
 	}
 	defer db.Close()
+	err = db.Update(func(tx *bolt.Tx) error {
+		_, err = tx.CreateBucketIfNotExists([]byte(receiver.dbBucketName))
+		return err
+	})
 	for _, file := range receiver.filePaths { // files provided should be the exact received url
 		db.View(func(tx *bolt.Tx) error {
 			bucket := tx.Bucket([]byte(receiver.dbBucketName))
