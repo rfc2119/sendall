@@ -192,10 +192,10 @@ func TestPostAndDelete(t *testing.T) {
 		},
 
 		// server that does not support the latest version with a valid file
-		{
-			transferSh: transferSh{"https://transfer.sh", -1, 7, &globalHttpClient, []string{"/etc/hostname"}, validDbName, validBucketName, false},
-			shouldFail: false,
-		},
+		// {
+		// 	transferSh: transferSh{"https://transfer.sh", -1, 7, &globalHttpClient, []string{"/etc/hostname"}, validDbName, validBucketName, false},
+		// 	shouldFail: false,
+		// },
 
 		// invalid db name (i.e new db)
 		{
