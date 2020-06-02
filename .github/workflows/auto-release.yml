@@ -1,5 +1,6 @@
 name: auto-release
-
+#OHOHOH I AM A USELESS COMMIT
+#SECOND TEST
 # Create a new release at every push on master
 on:
   push:
@@ -11,23 +12,25 @@ jobs:
   auto-release:
     name: "Build and Release"
     runs-on: ubuntu-latest
-  steps:
-    - name: Checkout Code
-      uses: actions/checkout@v2
-    - name: Build Project
-      run: |
-        go build
-        tar -cvf sendall-${{ github.sha }}.tar.gz sendall README.md API.md 
-    - name: Create Release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: automatic # A way to differentiate auto and "big" releases 
-    - name: Upload Release
-      uses: actions/upload-release-asset
-      env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+      - name: Build Project
+        run: |
+         go build
+          tar -cvf sendall-${{ github.sha }}.tar.gz sendall README.md API.md 
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+         tag_name: ${{ github.ref }}  # gnééééééé
+         release_name: Release ${{ github.ref }} # Release name is needed
+      - name: Upload Release
+        uses: actions/upload-release-asset@v1
+        env:
+         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./sendall-${{ github.sha }}.tar.gz
