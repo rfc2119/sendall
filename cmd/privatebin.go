@@ -104,7 +104,7 @@ var (
 		httpClient:       &http.Client{},
 		dbName:           "sendall.db", // bolt db name
 		dbBucketName:     "privateBin", // bucket used within bolt; contains the posted urls -> deleted urls
-		debug: true,
+		debug:            true,
 	}
 
 	privateBinCmd = &cobra.Command{
@@ -115,8 +115,8 @@ var (
 			chanHttpResponses := make(chan *http.Response, len(pbinGlobal.filePaths))
 			chanExtraStrings := make(chan []string, 0) // we won't be sending anything for this service
 
-	// files are provided straight from the cmd interface; tidy them up
-	pbinGlobal.filePaths = prepareFiles(args)
+			// files are provided straight from the cmd interface; tidy them up
+			pbinGlobal.filePaths = prepareFiles(args)
 			go func() {
 				if err := pbinGlobal.Post(chanHttpResponses, chanExtraStrings); err != nil {
 					fmt.Println(err)
@@ -133,7 +133,7 @@ var (
 		Short: "delete a link posted before",
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-	pbinGlobal.filePaths = args
+			pbinGlobal.filePaths = args
 
 			if err := pbinGlobal.Delete(); err != nil {
 				fmt.Println(err)
@@ -166,7 +166,7 @@ type privateBin struct {
 	filePaths            []string
 
 	// other
-	debug	bool
+	debug bool
 }
 
 func (pbinReciever *privateBin) Delete() error {
@@ -177,8 +177,8 @@ func (pbinReciever *privateBin) Delete() error {
 		err       error
 		deleteUrl []byte
 		// req       *http.Request
-		resp      *http.Response
-		bucket    *bolt.Bucket
+		resp   *http.Response
+		bucket *bolt.Bucket
 	)
 
 	if db, err = bolt.Open(pbinReciever.dbName, 0600, nil); err != nil {
@@ -196,7 +196,7 @@ func (pbinReciever *privateBin) Delete() error {
 			return nil
 		})
 		if len(deleteUrl) == 0 {
-			fmt.Println("link %s does not have an entry in db", file)
+			fmt.Printf("link %s does not have an entry in db", file)
 			continue
 		}
 		if resp, err = http.Get(string(deleteUrl)); err != nil { // TODO: find out if Client.Do() does it in a goroutine
@@ -205,7 +205,7 @@ func (pbinReciever *privateBin) Delete() error {
 		}
 		defer resp.Body.Close()
 		body, _ := ioutil.ReadAll(resp.Body)
-		fmt.Println(string(body))	// TODO: what is the response for a delete request ?
+		fmt.Println(string(body)) // TODO: what is the response for a delete request ?
 		// TODO: assume here we got a 200 response code
 		err = db.Update(func(tx *bolt.Tx) error {
 

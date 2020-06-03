@@ -1,0 +1,25 @@
+name: continous-integration
+on: [push]
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v2
+      - uses: actions-go/push@master # Testing this one
+        with:
+                commit-message: '[AUTO] Formatted the code'
+                remote: origin
+      - run: 'go version'
+      - run: 'go fmt ./...'
+  # Stolen from https://github.com/bbriggs/bitbot/blob/dev/.github/workflows/test.yml
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v2
+      - run: 'go version'
+      - run: 'go test ./...'

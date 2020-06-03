@@ -1,0 +1,35 @@
+name: auto-release
+
+# Create a new release at every push on master
+on:
+  push:
+    branches:
+      - "master"
+
+# See https://github.com/marketplace/actions/upload-a-release-asset
+jobs:
+  auto-release:
+    name: "Build and Release"
+    runs-on: ubuntu-latest
+  steps:
+    - name: Checkout Code
+      uses: actions/checkout@v2
+    - name: Build Project
+      run: |
+        go build
+        tar -cvf sendall-${{ github.sha }}.tar.gz sendall README.md API.md 
+    - name: Create Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: automatic # A way to differentiate auto and "big" releases 
+    - name: Upload Release
+      uses: actions/upload-release-asset
+      env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./sendall-${{ github.sha }}.tar.gz
+          asset_name: sendall-${{ github.sha }}.tar.gz 
+          asset_content_type: application/gzip

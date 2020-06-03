@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"path/filepath"
 	"fmt"
+	"path/filepath"
 )
 
 func sanitize(fileName string) string {

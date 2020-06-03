@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	// "path/filepath"
 	"strconv"
 	"sync"
 
@@ -19,17 +18,6 @@ const (
 	portDev    = "8090"
 	serverProd = "https://transfer.sh"
 )
-
-type generalRequest struct {
-	method     string
-	host       string
-	files      []string
-	reqHeaders map[string]string // for each c in transferReqHeaders: reqHeaders[c] = <val>
-}
-
-type generalResponse struct {
-	respHeaders map[string]string // for each c in transferRespHeaders: reqHeaders[c] = <val>
-}
 
 type transferSh struct {
 	// previously: a dummy empty struct{} to implement the interface
@@ -46,8 +34,7 @@ type transferSh struct {
 	dbBucketName string
 
 	// other
-	debug		bool
-
+	debug bool
 }
 
 func (receiver *transferSh) SaveUrl(receivedHttpResponses <-chan *http.Response, extra <-chan []string) error {
@@ -58,6 +45,7 @@ func (receiver *transferSh) SaveUrl(receivedHttpResponses <-chan *http.Response,
 		bucket *bolt.Bucket
 		err    error
 	)
+	allUrlsOk := true
 	if db, err = bolt.Open(receiver.dbName, 0600, nil); err != nil {
 		fmt.Println("could not open db")
 		return err
@@ -76,12 +64,12 @@ func (receiver *transferSh) SaveUrl(receivedHttpResponses <-chan *http.Response,
 
 		defer resp.Body.Close()
 		if body, err = ioutil.ReadAll(resp.Body); err != nil {
-			fmt.Printf("failed to read body: %s", err) // body is new url returned by server
+			fmt.Printf("failed to read body: %s", err)
+			allUrlsOk = false
 			continue
 		}
-		if receiver.debug { // TODO: uncomment this out to ease writing tests; printOnly may be added to the transferSh struct
-			fmt.Printf("%s\ndelete url: %s\n====\n", body, resp.Header.Get("X-Url-Delete"))
-		}
+		// fmt.Printf("%s\ndelete url: %s\n====\n", body, resp.Header.Get("X-Url-Delete"))
+		fmt.Println(string(body)) // body is new url returned by the server
 
 		err = db.Update(func(tx *bolt.Tx) error {
 			bucket = tx.Bucket([]byte(receiver.dbBucketName))
@@ -89,12 +77,17 @@ func (receiver *transferSh) SaveUrl(receivedHttpResponses <-chan *http.Response,
 			return err
 		})
 		if err != nil {
-			fmt.Printf("error on writing %s: %s", body, err)
+			fmt.Printf("error on writing %s: %s\n", body, err)
+			allUrlsOk = false
 			continue
 		}
 		fmt.Printf("wrote %s\n", body)
 
 	}
+	if allUrlsOk == false {
+		return fmt.Errorf("one or more URLs were not saved properly")
+	}
+
 	return nil
 
 }
@@ -109,21 +102,20 @@ func (receiver *transferSh) Post(receivedHttpResponses chan<- *http.Response, ex
 		newRequest  *http.Request
 		holup       sync.WaitGroup
 	)
+	allRequestsOk := true
 	for i := 0; i < len(receiver.filePaths); i++ {
 
 		if file, err = os.Open(receiver.filePaths[i]); err != nil {
 			fmt.Println(err)
 			continue
 		}
-		if receiver.hostUrl == serverProd { // comment this out; this is for local developing
-			receiver.hostUrl = fmt.Sprintf("%s:%s/", serverDev, portDev)
-		}
 		// url = receiver.hostUrl + file.Name()      // TODO: url need to end in '/'
-		url = receiver.hostUrl + sanitize(file.Name())	// TODO: imo we only need filepath.Clean(file.Name())
+		url = receiver.hostUrl + "/" + sanitize(file.Name())       // TODO: imo we only need filepath.Clean(file.Name())
 		fileContent = bufio.NewReader(file)                        // TODO: is this the appropriate way to read a file as an io.Reader ?
 		newRequest, err = http.NewRequest("PUT", url, fileContent) // transfer.sh resolves file path and generates a folder with random name
 		if err != nil {
 			fmt.Println(err)
+			allRequestsOk = false
 			continue
 		}
 		// adding custom headers
@@ -131,37 +123,26 @@ func (receiver *transferSh) Post(receivedHttpResponses chan<- *http.Response, ex
 		newRequest.Header.Add("Max-Days", strconv.Itoa(receiver.maxDays))
 
 		holup.Add(1)
-		go func(req *http.Request, c chan<- *http.Response) { // TODO: not sure if client.Do() already dispatches a goroutine; if so, this is a waste
+		go func(req *http.Request, c chan<- *http.Response, reqOk *bool) {
+			defer holup.Done()
 			if resp, err := receiver.httpClient.Do(req); err != nil {
-				fmt.Printf("issuing request failed: %s", err)
+				fmt.Printf("issuing request failed: %s\n", err)
+				*reqOk = false
 			} else {
 				c <- resp
 				// should pass here any extra strings to channel extra, but there is nothing to pass
 			}
-			holup.Done()
-		}(newRequest, receivedHttpResponses)
+		}(newRequest, receivedHttpResponses, &allRequestsOk)
 	}
 
 	holup.Wait()
+	if allRequestsOk == false {
+		return fmt.Errorf("one or more request failed")
+	}
 	close(receivedHttpResponses)
 	close(extra)
 	return nil
 }
-
-//req := generalRequest{
-//	method: "PUT", // default method is to upload
-//	host:   receiver.hostUrl,
-//	files:  fileList,
-//	reqHeaders: map[string]string{
-//		"Max-Downloads": strconv.Itoa(receiver.maxDownloads), // TODO: Itoa() all the fields ?
-//		"Max-Days":      strconv.Itoa(receiver.maxDays),
-//	},
-//}
-//if err := sendRequestSaveResponse(receiver.httpClient, &req); err != nil {
-//	fmt.Println(err)
-//	return err
-//}
-//return nil
 
 func (receiver *transferSh) Delete() error {
 
@@ -173,12 +154,28 @@ func (receiver *transferSh) Delete() error {
 		resp      *http.Response
 		bucket    *bolt.Bucket
 	)
+	allRequestsOk := true
 
+	// check if the db exists or not, also check the bucket
+	if _, err = os.Stat(receiver.dbName); os.IsNotExist(err) {
+		fmt.Println("delete: db file does not exist")
+		return err
+	}
+	if err != nil {
+		fmt.Println("create bucket error")
+		return err
+	}
+
+	// open db, check if bucket exists; fetch delete link and request deletion
 	if db, err = bolt.Open(receiver.dbName, 0600, nil); err != nil {
 		fmt.Println("could not open db")
 		return err
 	}
 	defer db.Close()
+	err = db.Update(func(tx *bolt.Tx) error {
+		_, err = tx.CreateBucketIfNotExists([]byte(receiver.dbBucketName))
+		return err
+	})
 	for _, file := range receiver.filePaths { // files provided should be the exact received url
 		db.View(func(tx *bolt.Tx) error {
 			bucket := tx.Bucket([]byte(receiver.dbBucketName))
@@ -190,19 +187,29 @@ func (receiver *transferSh) Delete() error {
 		})
 		if len(deleteUrl) == 0 {
 			fmt.Printf("link %s does not have an entry in db\n", file)
+			allRequestsOk = false
 			continue
 		}
 		req, _ = http.NewRequest("DELETE", string(deleteUrl), nil)
 		if resp, err = receiver.httpClient.Do(req); err != nil { // TODO: find out if Client.Do() does it in a goroutine
 			fmt.Printf("issuing request failed: %s\n", err)
+			allRequestsOk = false
 			continue
 		}
+		// if receiver.debug {
+		// 	resp.Write(os.Stdout)
+		// }
 		defer resp.Body.Close()
-		body, _ := ioutil.ReadAll(resp.Body)
-		if receiver.debug{
-			fmt.Println(string(body))
+		// body, _ := ioutil.ReadAll(resp.Body)
+		// if receiver.debug{
+		// 	fmt.Println(string(body))
+		// }
+		// TODO: assume here we got a 200 response code (what is 200 for transfer ?)
+		if resp.Status != "200 OK" {
+			fmt.Println("method not allowed (invalid url or file was deleted)")
+			allRequestsOk = false
+			continue
 		}
-		// TODO: assume here we got a 200 response code
 		err = db.Update(func(tx *bolt.Tx) error {
 
 			bucket = tx.Bucket([]byte(receiver.dbBucketName))
@@ -213,8 +220,12 @@ func (receiver *transferSh) Delete() error {
 		})
 		if err != nil {
 			fmt.Printf("error deleting link %s from db\n", file)
-			return err
+			allRequestsOk = false
+			continue
 		}
+	}
+	if allRequestsOk == false {
+		return fmt.Errorf("one or more files were not deleted")
 	}
 	fmt.Println("done")
 	return nil
@@ -229,7 +240,7 @@ var (
 		httpClient:   &http.Client{},
 		dbName:       "sendall.db",  // bolt db name
 		dbBucketName: "transfer.sh", // bucket used within bolt; contains the posted urls -> deleted urls
-		debug: true,
+		debug:        true,
 	}
 	// ======
 	transferReqHeaders = []string{ // any custom headers used in issuing the request; for reference only
@@ -238,7 +249,6 @@ var (
 	}
 	transferRespHeaders = []string{ // any custom headers received on response; for reference only
 		"X-Url-Delete",
-		
 	}
 	transferShCmd = &cobra.Command{
 		Use:   "transfer",
@@ -265,8 +275,8 @@ var (
 		Short: "delete a link posted before",
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			// flags have populated cmd memebrs of the service struct
-			transfer.filePaths = args	// it is expected that provided arguments are the exact links you received from the service
+			// flags have populated cmd memebrs of the "transfer" struct
+			transfer.filePaths = args // it is expected that provided arguments are the exact links you received from the service
 			if err := transfer.Delete(); err != nil {
 				fmt.Println(err)
 			}
@@ -281,27 +291,6 @@ func init() {
 	transferShCmd.AddCommand(transferShDeleteCmd)
 	rootCmd.AddCommand(transferShCmd)
 }
-
-// func sendRequestSaveResponse(client *http.Client, req *generalRequest) error{
-//
-// 	c := make(chan *http.Response, len(req.files))
-// 	go doGeneralRequest(client, req, c)
-// 	if err := saveResponse(c, false); err != nil {
-// 		fmt.Println("unable to save response")
-// 		return err
-// 	}
-// 	return nil
-//
-// }
-// func sendRequestPrintResponse(client *http.Client, req *generalRequest) {
-//
-// 	c := make(chan *http.Response, len(req.files))
-// 	go doGeneralRequest(client, req, c)
-// 	if err := saveResponse(c, true); err != nil {
-// 		fmt.Println(err)
-// 	}
-//
-// }
 
 // PUT: /put/$filename, /upload/$filename, /$filename
 // POST: /
