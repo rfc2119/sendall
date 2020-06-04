@@ -13,7 +13,6 @@ positional arguments:
 * `file`: a list of local path(s) to file(s) to upload
 
 flags:
-* `--encrypt [key]`: forget this flag for now
 * `--max-downloads <int>`: self-explanatory
 * `--max-days <int>`: number in days after which the file will be deleted on the server
 * `--host <url>`: specify a different host than the original (for example, a self-hosted service)

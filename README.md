@@ -1,28 +1,34 @@
 # sendall
 
+Upload your files to popular one-off file-sharing servies through one interface. You can self-host most of these services
+
 ## Usage
 
-upload a file to backend `ffsend` (firefox send) using default credentials (anonymous)
+Upload a file to service transfer.sh with a download limit of 7 downloads
 ```
-./sendall --backend ffsend <file>
+sendall transfer <file> --downloads 7
 ```
 
-## Credentials
-`sendall` uses credentials for backends that support it. For example, [Firefox send](https://github.com/mozilla/send) do it
+Delete your just uploaded file from the transfer.sh server
+```
+sendall transfer delete <exact_url_you_received_from_the_server>
+```
 
-## Backends
-### Firefox Send
-why implement a new client instead of the well-made [ffsend](https://github.com/timvisee/ffsend) client ? well, it's written in rust, and I am not aware yet how to merge the two binaries (perhaps bundle it as a separate dependency ?). Maybe we can use its the [api](https://github.com/timvisee/ffsend-api) component and build the rest in Go ? I'm not sure yet
+Upload a markdown document to your self-hosted private bin instance, with an expiration time of 10 minutes
+```
+sendall privatebin <file> --host myhost.tld --format markdown --days 10min
+```
 
-There are two python client implementation [here](https://github.com/nneonneo/ffsend) and [here](https://github.com/ehuggett/send-cli)
+## Supported Services
+* transfer.sh
+* private bin 
 
-### transfer.sh
-
-### wetransfer
+### Notes
+* The server at [transfer.sh](https://transfer.sh) is not updated with the latest code from the original repository. The APIs are thus not compatible
 
 ## TODO
 
-* use the following as a backend:
-    [ ] firefox send
-    [ ] transfer.sh
+* Add support the following services:
+
+    [ ] [Firefox send](https://github.com/mozilla/send) (maybe we can use this [rust client](https://github.com/timvisee/ffsend) ? It has an [api](https://github.com/timvisee/ffsend-api) component too. Also, there are two python client implementation [here](https://github.com/nneonneo/ffsend) and [here](https://github.com/ehuggett/send-cli)
     [ ] WeTransfer
