@@ -14,10 +14,14 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v2
-      - name: Build Project
+      - name: Linux Build
         run: |
-         go build
-          tar -cvf sendall-${{ github.sha }}.tar.gz sendall README.md API.md 
+         GOOS=linux GOARCH=386 go build -o "sendall"
+         tar -cvf sendall-linux.tar.gz sendall README.md API.md 
+      - name: Windows Build
+        run: |
+         GOOS=windows GOARCH=386 go build -o "sendall.exe"
+         zip sendall-windows.zip sendall.exe README.md API.md
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
@@ -26,12 +30,21 @@ jobs:
         with:
          tag_name: ${{ github.run_id }}
          release_name: Release ${{ github.sha }}
-      - name: Upload Release
+      - name: Upload Linux Release
         uses: actions/upload-release-asset@v1
         env:
          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./sendall-${{ github.sha }}.tar.gz
-          asset_name: sendall-${{ github.sha }}.tar.gz 
+          asset_path: ./sendall-linux.tar.gz
+          asset_name: sendall-linux.tar.gz 
           asset_content_type: application/gzip
+      - name: Upload Windows Release
+        uses: actions/upload-release-asset@v1
+        env:
+         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./sendall-windows.zip
+          asset_name: sendall-windows.zip 
+          asset_content_type: application/zip
