@@ -31,4 +31,5 @@ sendall privatebin <file> --host myhost.tld --format markdown --days 10min
 * Add support the following services:
 
     [ ] [Firefox send](https://github.com/mozilla/send) (maybe we can use this [rust client](https://github.com/timvisee/ffsend) ? It has an [api](https://github.com/timvisee/ffsend-api) component too. Also, there are two python client implementation [here](https://github.com/nneonneo/ffsend) and [here](https://github.com/ehuggett/send-cli)
+
     [ ] WeTransfer
