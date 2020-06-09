@@ -81,7 +81,9 @@ func (receiver *transferSh) SaveUrl(receivedHttpResponses <-chan *http.Response,
 			allUrlsOk = false
 			continue
 		}
-		fmt.Printf("wrote %s\n", body)
+        if receiver.debug == true {
+		    fmt.Printf("wrote %s to db\n", body)
+        }
 
 	}
 	if allUrlsOk == false {
@@ -235,12 +237,12 @@ var (
 	// ====== default values for options
 	transfer = transferSh{ // service transfer.sh
 		hostUrl:      serverProd,
-		maxDownloads: -1,
+		maxDownloads: 1,
 		maxDays:      7,
 		httpClient:   &http.Client{},
 		dbName:       "sendall.db",  // bolt db name
 		dbBucketName: "transfer.sh", // bucket used within bolt; contains the posted urls -> deleted urls
-		debug:        true,
+		debug:        false,
 	}
 	// ======
 	transferReqHeaders = []string{ // any custom headers used in issuing the request; for reference only
