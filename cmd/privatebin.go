@@ -104,7 +104,7 @@ var (
 		httpClient:       &http.Client{},
 		dbName:           "sendall.db", // bolt db name
 		dbBucketName:     "privateBin", // bucket used within bolt; contains the posted urls -> deleted urls
-		debug:            true,
+		debug:            false,
 	}
 
 	privateBinCmd = &cobra.Command{
@@ -205,7 +205,9 @@ func (pbinReciever *privateBin) Delete() error {
 		}
 		defer resp.Body.Close()
 		body, _ := ioutil.ReadAll(resp.Body)
-		fmt.Println(string(body)) // TODO: what is the response for a delete request ?
+		if pbinReciever.debug {
+			fmt.Println(string(body)) // TODO: what is the response for a delete request ?
+		}
 		// TODO: assume here we got a 200 response code
 		err = db.Update(func(tx *bolt.Tx) error {
 
@@ -250,11 +252,13 @@ func (pbinReciever *privateBin) SaveUrl(receivedHttpResponses <-chan *http.Respo
 		}
 		url := fmt.Sprintf("%s%s#%s", pbinReciever.hostUrl, parsedResponse.Url, base58.Encode(key))
 		deleteUrl := fmt.Sprintf("%s/?pasteid=%s&deletetoken=%s", pbinReciever.hostUrl, parsedResponse.Id, parsedResponse.Deletetoken)
-		fmt.Printf("response: %v\n", parsedResponse)             // TODO: use logging
-		fmt.Printf("url: %s\n delete url: %s\n", url, deleteUrl) // TODO: use logging
+		fmt.Println(url)
+		if pbinReciever.debug {
+			fmt.Printf("response: %v\n", parsedResponse)             // TODO: use logging
+			fmt.Printf("url: %s\n delete url: %s\n", url, deleteUrl) // TODO: use logging
+		}
 
 		// save into db (TODO: refactor)
-
 		var (
 			// body   []byte
 			db     *bolt.DB
@@ -296,8 +300,9 @@ func (pbinReciever *privateBin) SaveUrl(receivedHttpResponses <-chan *http.Respo
 			fmt.Printf("error on writing %s: %s", deleteUrl, err)
 			continue
 		}
-		fmt.Printf("wrote %s\n", deleteUrl)
-
+		if pbinReciever.debug {
+			fmt.Printf("wrote %s in db\n", deleteUrl)
+		}
 	}
 	return nil
 }
